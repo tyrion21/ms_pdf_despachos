@@ -3,6 +3,8 @@ package com.jason.service;
 import com.jason.model.FeDteEnvWs;
 import com.jason.model.FeDteEnvWsId;
 import com.jason.repository.FeDteEnvWsRepository;
+import com.jason.repository.DispatchDetailRepository;
+import com.jason.model.DispatchDetailLine;
 import com.itextpdf.kernel.colors.ColorConstants;
 import com.itextpdf.kernel.colors.DeviceRgb;
 import com.itextpdf.kernel.font.PdfFont;
@@ -35,15 +37,28 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 
 @Service
 public class PdfGenerationService {
 
         private final FeDteEnvWsRepository repository;
-        private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        private final DispatchDetailRepository detailRepository;
+        private static final DateTimeFormatter DATE_FORMAT_EMISION = DateTimeFormatter.ofPattern("MMM dd yyyy", Locale.ENGLISH);
+        private static final DateTimeFormatter DATE_FORMAT_VENC = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+        private static final DecimalFormat MONEY_FORMAT;
+        static {
+                DecimalFormatSymbols sym = new DecimalFormatSymbols(new Locale("es","CL"));
+                sym.setDecimalSeparator(',');
+                sym.setGroupingSeparator('.');
+                MONEY_FORMAT = new DecimalFormat("#,##0", sym);
+        }
 
-        public PdfGenerationService(FeDteEnvWsRepository repository) {
+        public PdfGenerationService(FeDteEnvWsRepository repository, DispatchDetailRepository detailRepository) {
                 this.repository = repository;
+                this.detailRepository = detailRepository;
         }
 
         public byte[] generateDispatchGuidePdf(String codEmp, Integer tipoDoc, Float caf) throws IOException {
@@ -55,6 +70,32 @@ public class PdfGenerationService {
                                         + tipoDoc + ", " + caf);
                 }
                 FeDteEnvWs data = dataOptional.get();
+
+                // Obtener detalle desde SP (NUM_FACT asumido = caf)
+                String numFact = String.valueOf(caf != null ? caf.intValue() : 0);
+                java.util.List<DispatchDetailLine> detailLines = java.util.Collections.emptyList();
+                try {
+                        detailLines = detailRepository.fetchDetail(codEmp, numFact);
+                } catch (Exception e) {
+                        System.err.println("Error obteniendo detalle SP_GUIA_DESPACHO_ELECTRONICA: " + e.getMessage());
+                }
+
+                // Derivar datos adicionales desde primera línea del detalle (si existe)
+                DispatchDetailLine headerLine = (detailLines != null && !detailLines.isEmpty()) ? detailLines.get(0) : null;
+                String puertoEmbarque = headerLine != null ? safe(headerLine.getPuertoEmbarque()) : "";
+                String puertoDestino = headerLine != null ? safe(headerLine.getPuertoDestino()) : "";
+                String observacion = headerLine != null ? safe(headerLine.getObservacion()) : "";
+                int totalCajasVal = headerLine != null && headerLine.getTotalCajas()!=null ? headerLine.getTotalCajas() : (detailLines!=null?detailLines.stream().map(l-> l.getQuantity()==null?0:l.getQuantity()).reduce(0,Integer::sum):0);
+                int palletsVal = headerLine != null && headerLine.getPallets()!=null ? headerLine.getPallets() : 0;
+                String totalBultosTexto = "Cajas= " + totalCajasVal + " Pallets: " + palletsVal;
+                float pesoNetoTotalCalc = headerLine != null && headerLine.getPesoNetoTotal()!=null ? headerLine.getPesoNetoTotal() : 0f;
+                float pesoBrutoTotalCalc = headerLine != null && headerLine.getPesoBrutoTotal()!=null ? headerLine.getPesoBrutoTotal() : 0f;
+                String rutTransportista = headerLine != null ? safe(headerLine.getRutTransportista()) : "";
+                String chofer = headerLine != null ? safe(headerLine.getChofer()) : "";
+                // codigo_nave se usará como EXP y M/N
+                String exp = headerLine != null ? safe(headerLine.getCodigoNave()) : "";
+                String montoNetoMN = exp;
+                String patente = headerLine != null ? safe(headerLine.getPatente()) : "";
 
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 PdfWriter writer = new PdfWriter(baos);
@@ -166,9 +207,8 @@ public class PdfGenerationService {
                                 .add(new Paragraph("FECHA EMISION").setFont(boldFont).setFontSize(7)));
                 fechaTable.addCell(new Cell().setBorder(Border.NO_BORDER).add(new Paragraph(
                                 data.getFechaEmision() != null
-                                                ? data.getFechaEmision()
-                                                                .format(DateTimeFormatter.ofPattern("MMMM dd yyyy"))
-                                                : "Jul 25 2025")
+                                                ? data.getFechaEmision().format(DATE_FORMAT_EMISION)
+                                                : "Nov 24 2024")
                                 .setFont(font).setFontSize(7)));
                 fechaEmisionCell.add(fechaTable);
                 clientInfoTable.addCell(fechaEmisionCell);
@@ -198,7 +238,7 @@ public class PdfGenerationService {
                                 createInfoCell(data.getCiudadCliente() != null ? data.getCiudadCliente() : "SANTIAGO",
                                                 false, 7, font));
 
-                // GIRO y COMUNA
+                // GIRO y COMUNAv
                 clientDetailsTable.addCell(createInfoCell("GIRO", true, 7, boldFont));
                 clientDetailsTable.addCell(createInfoCell(
                                 data.getGiroCliente() != null ? data.getGiroCliente()
@@ -208,40 +248,16 @@ public class PdfGenerationService {
                 clientDetailsTable.addCell(createInfoCell(
                                 data.getComunaCliente() != null ? data.getComunaCliente() : "PAINE", false, 7, font));
 
+                // Agregar fila con TIPO DESPACHO y TIPO TRASLADO dentro de la misma tabla de detalles
+                clientDetailsTable.addCell(createInfoCell("TIPO DESPACHO", true, 7, boldFont));
+                clientDetailsTable.addCell(createInfoCell((data.getTdes()!=null?String.valueOf((int)data.getTdes().floatValue()):"1") + " NO ESPECIFICADO", false, 7, font));
+                String tipoTrasladoValor = headerLine != null && safe(headerLine.getTipoTraslado()).length() > 0
+                                ? headerLine.getTipoTraslado()
+                                : (data.getTras() != null ? String.valueOf((int) data.getTras().floatValue()) : "5");
+                clientDetailsTable.addCell(createInfoCell("TIPO TRASLADO", true, 7, boldFont));
+                clientDetailsTable.addCell(createInfoCell(tipoTrasladoValor + " TRASLADOS INTERNOS", false, 7, font));
+
                 clientInfoTable.addCell(new Cell().setBorder(Border.NO_BORDER).add(clientDetailsTable).setPadding(3));
-
-                // TIPO DESPACHO
-                Cell tipoDespachoCell = new Cell()
-                                .setBackgroundColor(new DeviceRgb(230, 230, 230))
-                                .setBorder(Border.NO_BORDER)
-                                .setBorderTop(new SolidBorder(ColorConstants.BLACK, 1))
-                                .setPadding(5);
-                Table tipoDespachoTable = new Table(UnitValue.createPercentArray(new float[] { 20f, 80f }));
-                tipoDespachoTable.setWidth(UnitValue.createPercentValue(100));
-                tipoDespachoTable.addCell(new Cell().setBorder(Border.NO_BORDER)
-                                .add(new Paragraph("TIPO DESPACHO").setFont(boldFont).setFontSize(7)));
-                tipoDespachoTable.addCell(new Cell().setBorder(Border.NO_BORDER).add(new Paragraph(
-                                (data.getTdes() != null ? String.valueOf((int) data.getTdes().floatValue()) : "1")
-                                                + " NO ESPECIFICADO")
-                                .setFont(font).setFontSize(7)));
-                tipoDespachoCell.add(tipoDespachoTable);
-                clientInfoTable.addCell(tipoDespachoCell);
-
-                // TIPO TRASLADO
-                Cell tipoTrasladoCell = new Cell()
-                                .setBorder(Border.NO_BORDER)
-                                .setBorderTop(new SolidBorder(ColorConstants.BLACK, 1))
-                                .setPadding(5);
-                Table tipoTrasladoTable = new Table(UnitValue.createPercentArray(new float[] { 20f, 80f }));
-                tipoTrasladoTable.setWidth(UnitValue.createPercentValue(100));
-                tipoTrasladoTable.addCell(new Cell().setBorder(Border.NO_BORDER)
-                                .add(new Paragraph("TIPO TRASLADO").setFont(boldFont).setFontSize(7)));
-                tipoTrasladoTable.addCell(new Cell().setBorder(Border.NO_BORDER).add(new Paragraph(
-                                (data.getTras() != null ? String.valueOf((int) data.getTras().floatValue()) : "5")
-                                                + " TRASLADOS INTERNOS")
-                                .setFont(font).setFontSize(7)));
-                tipoTrasladoCell.add(tipoTrasladoTable);
-                clientInfoTable.addCell(tipoTrasladoCell);
 
                 // Información de destino y transporte
                 Table transportTable = new Table(UnitValue.createPercentArray(new float[] { 15f, 35f, 15f, 35f }));
@@ -252,14 +268,14 @@ public class PdfGenerationService {
                 transportTable.addCell(createInfoCell(data.getDireccionCliente() != null ? data.getDireccionCliente()
                                 : "RUTA 5 SUR PARCELA 96 A KM 41 PAINE", false, 7, font));
                 transportTable.addCell(createInfoCell("PUERTO EMBARQUE", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(puertoEmbarque, false, 7, font));
 
                 // COMUNA DESTINO y PUERTO DESEMBARQUE
                 transportTable.addCell(createInfoCell("COMUNA DESTINO", true, 7, boldFont));
                 transportTable.addCell(createInfoCell(
                                 data.getComunaCliente() != null ? data.getComunaCliente() : "PAINE", false, 7, font));
                 transportTable.addCell(createInfoCell("PUERTO DESEMBARQUE", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(puertoDestino, false, 7, font));
 
                 // CIUDAD DESTINO y PESO TOTAL BRUTO
                 transportTable.addCell(createInfoCell("CIUDAD DESTINO", true, 7, boldFont));
@@ -267,33 +283,31 @@ public class PdfGenerationService {
                                 createInfoCell(data.getCiudadCliente() != null ? data.getCiudadCliente() : "SANTIAGO",
                                                 false, 7, font));
                 transportTable.addCell(createInfoCell("PESO TOTAL BRUTO", true, 7, boldFont));
-                transportTable.addCell(createInfoCell(
-                                String.format("%.2f", data.getNeto() != null ? data.getNeto() : 0.00), false, 7, font));
+                transportTable.addCell(createInfoCell(String.format("%.2f", pesoBrutoTotalCalc), false, 7, font));
 
                 // MODALIDAD VENTA y PESO TOTAL NETO
                 transportTable.addCell(createInfoCell("MODALIDAD VENTA", true, 7, boldFont));
                 transportTable.addCell(createInfoCell("", false, 7, font));
                 transportTable.addCell(createInfoCell("PESO TOTAL NETO", true, 7, boldFont));
-                transportTable.addCell(createInfoCell(
-                                String.format("%.0f", data.getTotal() != null ? data.getTotal() : 0), false, 7, font));
+                transportTable.addCell(createInfoCell(String.format("%.2f", pesoNetoTotalCalc), false, 7, font));
 
                 // RUT TRANSPORTISTA y TOTAL BULTOS
                 transportTable.addCell(createInfoCell("RUT TRANSPORTISTA", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(rutTransportista, false, 7, font));
                 transportTable.addCell(createInfoCell("TOTAL BULTOS", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("Cajas= 0 Pallets: 0", false, 7, font));
+                transportTable.addCell(createInfoCell(totalBultosTexto, false, 7, font));
 
                 // CHOFER y EXP.
                 transportTable.addCell(createInfoCell("CHOFER", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(chofer, false, 7, font));
                 transportTable.addCell(createInfoCell("EXP.", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(exp, false, 7, font));
 
                 // PATENTE y M/N
                 transportTable.addCell(createInfoCell("PATENTE", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("Carro:", false, 7, font));
+                transportTable.addCell(createInfoCell(patente + " Carro:", false, 7, font));
                 transportTable.addCell(createInfoCell("M/N", true, 7, boldFont));
-                transportTable.addCell(createInfoCell("", false, 7, font));
+                transportTable.addCell(createInfoCell(montoNetoMN, false, 7, font));
 
                 clientInfoTable.addCell(new Cell().setBorder(Border.NO_BORDER)
                                 .setBorderTop(new SolidBorder(ColorConstants.BLACK, 1)).add(transportTable)
@@ -309,21 +323,32 @@ public class PdfGenerationService {
                 productTable.setBorder(new SolidBorder(ColorConstants.BLACK, 1));
 
                 // Headers con fondo gris
-                productTable.addCell(createProductHeaderCell("CODIGO", boldFont));
-                productTable.addCell(createProductHeaderCell("DETALLE", boldFont));
-                productTable.addCell(createProductHeaderCell("PRECIO", boldFont));
-                productTable.addCell(createProductHeaderCell("CANTIDAD", boldFont));
-                productTable.addCell(createProductHeaderCell("TOTAL", boldFont));
+                productTable.addCell(createProductHeaderCell("CODIGO", boldFont, TextAlignment.LEFT));
+                productTable.addCell(createProductHeaderCell("DETALLE", boldFont, TextAlignment.LEFT));
+                productTable.addCell(createProductHeaderCell("PRECIO", boldFont, TextAlignment.RIGHT));
+                productTable.addCell(createProductHeaderCell("CANTIDAD", boldFont, TextAlignment.CENTER));
+                productTable.addCell(createProductHeaderCell("TOTAL", boldFont, TextAlignment.RIGHT));
 
-                // Datos del producto
-                productTable.addCell(createProductDataCell("test2", font));
-                productTable.addCell(createProductDataCell("test2", font));
-                productTable.addCell(createProductDataCell("0,00", font).setTextAlignment(TextAlignment.RIGHT));
-                productTable.addCell(createProductDataCell("1", font).setTextAlignment(TextAlignment.CENTER));
-                productTable.addCell(createProductDataCell("0", font).setTextAlignment(TextAlignment.RIGHT));
-
-                // Filas vacías para completar el espacio (menos filas para formato A4)
-                for (int i = 0; i < 6; i++) {
+                // Datos dinámicos del producto desde SP
+                if (detailLines != null && !detailLines.isEmpty()) {
+                        for (DispatchDetailLine l : detailLines) {
+                                productTable.addCell(createProductDataCell(safe(l.getProductCode()), font));
+                                productTable.addCell(createProductDataCell(safe(l.getDescription()), font));
+                                productTable.addCell(createProductDataCell(
+                                                l.getUnitPrice() != null ? formatMoneyFlexible(l.getUnitPrice()) : "",
+                                                font).setTextAlignment(TextAlignment.RIGHT));
+                                productTable.addCell(createProductDataCell(
+                                                l.getQuantity() != null ? String.valueOf(l.getQuantity()) : "",
+                                                font).setTextAlignment(TextAlignment.CENTER));
+                                productTable.addCell(createProductDataCell(
+                                                l.getLineTotal() != null ? formatMoneyFlexible(l.getLineTotal()) : "",
+                                                font).setTextAlignment(TextAlignment.RIGHT));
+                        }
+                }
+                // Filas vacías para completar (mínimo 6 filas total visibles)
+                int currentRows = detailLines != null ? detailLines.size() : 0;
+                int minRows = 6;
+                for (int i = currentRows; i < minRows; i++) {
                         for (int j = 0; j < 5; j++) {
                                 productTable.addCell(createProductDataCell("", font).setMinHeight(12));
                         }
@@ -332,7 +357,16 @@ public class PdfGenerationService {
                 document.add(productTable);
                 document.add(new Paragraph(" ").setFontSize(5));
 
-                // --- 4. SECCIÓN COMBINADA: TIMBRE Y TOTALES ---
+                
+                
+                // --- 4. OBSERVACIONES (antes del timbre) ---
+                String obsBlockEarly = buildObservationBlock(headerLine, observacion);
+                if(!obsBlockEarly.isBlank()){
+                        document.add(new Paragraph(obsBlockEarly).setFont(font).setFontSize(7));
+                        document.add(new Paragraph(" ").setFontSize(4));
+                }
+
+                // --- 5. SECCIÓN COMBINADA: TIMBRE Y TOTALES ---
                 Table combinedTable = new Table(UnitValue.createPercentArray(new float[] { 50f, 50f }));
                 combinedTable.setWidth(UnitValue.createPercentValue(100));
 
@@ -389,22 +423,18 @@ public class PdfGenerationService {
                 totalsTable.setBorder(new SolidBorder(ColorConstants.BLACK, 1));
 
                 totalsTable.addCell(createTotalCell("MONTO NETO", false, boldFont));
-                totalsTable.addCell(createTotalCell(String.format("%.0f", data.getNeto() != null ? data.getNeto() : 0),
-                                false, font));
+                totalsTable.addCell(createTotalCell(formatMoneyFlexible(data.getNeto()), false, font));
 
                 totalsTable.addCell(createTotalCell("MONTO EXENTO", false, boldFont));
-                totalsTable.addCell(createTotalCell(String.format("%.0f", data.getExen() != null ? data.getExen() : 0),
-                                false, font));
+                totalsTable.addCell(createTotalCell(formatMoneyFlexible(data.getExen()), false, font));
 
                 totalsTable.addCell(createTotalCell("IVA 19%", false, boldFont));
-                totalsTable.addCell(createTotalCell(String.format("%.0f", data.getIvam() != null ? data.getIvam() : 0),
-                                false, font));
+                totalsTable.addCell(createTotalCell(formatMoneyFlexible(data.getIvam()), false, font));
 
                 totalsTable.addCell(createTotalCell("TOTAL", true, boldFont)
                                 .setBackgroundColor(new DeviceRgb(230, 230, 230)));
-                totalsTable.addCell(
-                                createTotalCell(String.format("%.0f", data.getTotal() != null ? data.getTotal() : 0),
-                                                true, boldFont).setBackgroundColor(new DeviceRgb(230, 230, 230)));
+                totalsTable.addCell(createTotalCell(formatMoneyFlexible(data.getTotal()), true, boldFont)
+                                .setBackgroundColor(new DeviceRgb(230, 230, 230)));
 
                 totalesCell.add(totalsTable);
                 combinedTable.addCell(totalesCell);
@@ -412,31 +442,31 @@ public class PdfGenerationService {
                 document.add(combinedTable);
                 document.add(new Paragraph(" ").setFontSize(5));
 
-                // --- 5. TABLA FINAL DE INFORMACIÓN ---
+                // --- 6. TABLA FINAL DE INFORMACIÓN ---
                 Table finalInfoTable = new Table(UnitValue.createPercentArray(new float[] { 30f, 35f, 35f }));
                 finalInfoTable.setWidth(UnitValue.createPercentValue(100));
                 finalInfoTable.setBorder(new SolidBorder(ColorConstants.BLACK, 1));
 
                 // FECHA VENCIMIENTO
                 finalInfoTable.addCell(createFinalInfoCell("FECHA VENCIMIENTO", true, boldFont));
+                // FECHA VENCIMIENTO debe reflejar siempre la fecha de emisión
                 finalInfoTable.addCell(createFinalInfoCell(
-                                (data.getFechaVenc() != null ? data.getFechaVenc().format(DATE_FORMATTER)
-                                                : "25/07/2025"),
+                                (data.getFechaEmision() != null ? data.getFechaEmision().format(DATE_FORMAT_VENC)
+                                                : "--"),
                                 false, font));
                 finalInfoTable.addCell(createFinalInfoCell("", false, font));
 
                 // MONTO TOTAL
                 finalInfoTable.addCell(createFinalInfoCell("MONTO TOTAL", true, boldFont));
-                finalInfoTable.addCell(createFinalInfoCell("PESOS.-", false, font));
+                finalInfoTable.addCell(createFinalInfoCell(numberToWordsPesos(data.getTotal()), false, font));
                 finalInfoTable.addCell(createFinalInfoCell("", false, font));
 
                 document.add(finalInfoTable);
                 document.add(new Paragraph(" ").setFontSize(5));
 
-                // --- 6. INFORMACIÓN FINAL ---
+                // --- 7. INFORMACIÓN FINAL ---
                 Table finalTextTable = new Table(UnitValue.createPercentArray(new float[] { 50f, 50f }));
                 finalTextTable.setWidth(UnitValue.createPercentValue(100));
-
                 finalTextTable.addCell(new Cell().setBorder(Border.NO_BORDER)
                                 .setTextAlignment(TextAlignment.LEFT)
                                 .add(new Paragraph("Documento Creado por www.sdt.cl").setFont(font).setFontSize(7))
@@ -445,7 +475,6 @@ public class PdfGenerationService {
                                 .setTextAlignment(TextAlignment.RIGHT)
                                 .add(new Paragraph("ORIGINAL").setFont(boldFont).setFontSize(9))
                                 .setPadding(0));
-
                 document.add(finalTextTable);
 
                 document.close();
@@ -453,18 +482,124 @@ public class PdfGenerationService {
         }
 
         // Métodos auxiliares
+        private String safe(String v){ return v==null?"":v; }
+        @SuppressWarnings("unused")
+        private String formatMoney(Number n){
+                if(n==null) return "0";
+                try { return MONEY_FORMAT.format(n.doubleValue()); } catch(Exception e){ return String.valueOf(n); }
+        }
+
+        private String formatMoneyFlexible(Number n){
+                if(n==null) return "0";
+                double v = n.doubleValue();
+                // Si tiene parte decimal distinta de 0, mostrar con coma decimal
+                boolean hasDecimals = Math.abs(v - Math.rint(v)) > 0.0001;
+                String base = MONEY_FORMAT.format(Math.floor(v));
+                if(hasDecimals){
+                        // obtener decimales con dos dígitos
+                        String decimals = new java.text.DecimalFormat("00").format(Math.round((v - Math.floor(v))*100));
+                        return base + "," + decimals;
+                }
+                return base;
+        }
+
+        private String buildObservationBlock(DispatchDetailLine headerLine, String observacionBase){
+                StringBuilder sb = new StringBuilder();
+                if(headerLine!=null){
+                        sb.append("Exportador: ").append(safe(headerLine.getNombreExportador()))
+                                .append(" Rut: ").append(safe(headerLine.getRutExportador()))
+                                .append("  Recibidor: ").append(safe(headerLine.getRazonSocialReceptor()))
+                                .append(" Rut: ").append(safe(headerLine.getRutReceptor()));
+                        // Hora sin fecha si viene con componente fecha
+                        String hora = safe(headerLine.getHoraPresentacion());
+                        if(hora.contains(" ")){ // form "yyyy-MM-dd HH:mm:ss" o similar
+                                hora = hora.substring(hora.lastIndexOf(' ')+1); // solo HH:mm:ss
+                        }
+                        if(hora.startsWith("1900") || hora.startsWith("00:")) hora = ""; // descartar valores dummy
+                        sb.append("\nContenedor: ").append(safe(headerLine.getNumeroContenedor()))
+                                .append("  Sellos: ").append(safe(headerLine.getSellos()))
+                                .append("  Termógrafos: ").append(safe(headerLine.getTermografos()))
+                                .append(hora.isEmpty()?"":"  Hora: ").append(hora)
+                                .append("  Planta SAG: ").append(safe(headerLine.getCodigoPlantaSag()));
+                        String obsAll = observacionBase==null?"":observacionBase;
+                        if(safe(headerLine.getObsFact()).length()>0) obsAll += (obsAll.isEmpty()?"":" ")+ headerLine.getObsFact();
+                        if(safe(headerLine.getObsFact2()).length()>0) obsAll += (obsAll.isEmpty()?"":" ")+ headerLine.getObsFact2();
+                        if(safe(headerLine.getObsFact3()).length()>0) obsAll += (obsAll.isEmpty()?"":" ")+ headerLine.getObsFact3();
+                        if(!obsAll.isEmpty()){
+                                // Normalizar saltos y espacios
+                                obsAll = obsAll.replace('\r',' ').replace('\n',' ').replaceAll("\\s+", " ").trim();
+                                // Si existe etiqueta OBSERVACION: tomar solo el contenido posterior
+                                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)OBSERVACION:\\s*(.*)").matcher(obsAll);
+                                if(m.find()){
+                                        obsAll = m.group(1).trim();
+                                }
+                                // Eliminar cualquier bloque duplicado que vuelva a empezar con EXPORTADOR:
+                                int dup = obsAll.toUpperCase().indexOf("EXPORTADOR:");
+                                if(dup >=0){
+                                        // Tomar solo lo anterior al duplicado si contiene DUS antes; sino intentar rescatar después de 'Observacion:' ya hecho
+                                        obsAll = obsAll.substring(0, dup).trim();
+                                }
+                                // Unir / CONTACTO si quedó separado por barras o espacios raros
+                                obsAll = obsAll.replaceAll("(?i)(DUS\\s[0-9\\-]+)\\s*/\\s*CONTACTO", "$1 / CONTACTO");
+                                // Asegurar que después de DUS no se genera corte: ya sin \n
+                                sb.append("\n").append(obsAll);
+                        }
+                }
+                return sb.toString();
+        }
+
+        private String numberToWordsPesos(Float total){
+                long value = total==null?0:Math.round(Math.floor(total));
+                if(value==0) return "CERO PESOS.-";
+                return toSpanish(value).toUpperCase() + " PESOS.-";
+        }
+
+        private String toSpanish(long n){
+                if(n==0) return "cero";
+                if(n<0) return "menos " + toSpanish(-n);
+                String[] unidades = {"","uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciséis","diecisiete","dieciocho","diecinueve"};
+                String[] decenas = {"","diez","veinte","treinta","cuarenta","cincuenta","sesenta","setenta","ochenta","noventa"};
+                String[] centenas = {"","cien","doscientos","trescientos","cuatrocientos","quinientos","seiscientos","setecientos","ochocientos","novecientos"};
+                if(n<20) return unidades[(int)n];
+                if(n<100){
+                        int d=(int)(n/10);int u=(int)(n%10);
+                        if(n<30){
+                                if(n==20) return "veinte";
+                                return "veinti" + (u==0?"":(u==2?"dós":u==3?"trés":unidades[u]));
+                        }
+                        return decenas[d] + (u==0?"":" y "+unidades[u]);
+                }
+                if(n<1000){
+                        int c=(int)(n/100); int r=(int)(n%100);
+                        if(n==100) return "cien";
+                        return (centenas[c] + (r==0?"":" "+ toSpanish(r))).trim();
+                }
+                if(n<1_000_000){
+                        long miles = n/1000; long r = n%1000;
+                        String pref = miles==1?"mil":toSpanish(miles)+" mil";
+                        return (pref + (r==0?"":" "+toSpanish(r))).trim();
+                }
+                if(n<1_000_000_000){
+                        long millones = n/1_000_000; long r = n%1_000_000;
+                        String pref = millones==1?"un millón":toSpanish(millones)+" millones";
+                        return (pref + (r==0?"":" "+toSpanish(r))).trim();
+                }
+                long milesMillones = n/1_000_000_000; long r = n%1_000_000_000;
+                String pref = toSpanish(milesMillones)+" mil millones";
+                return (pref + (r==0?"":" "+toSpanish(r))).trim();
+        }
         private Cell createInfoCell(String content, boolean bold, int fontSize, PdfFont font) {
                 Paragraph p = new Paragraph(content != null ? content : "").setFont(font).setFontSize(fontSize);
                 return new Cell().setBorder(Border.NO_BORDER).add(p).setPadding(1);
         }
 
-        private Cell createProductHeaderCell(String content, PdfFont font) {
+        private Cell createProductHeaderCell(String content, PdfFont font, TextAlignment align) {
                 return new Cell()
                                 .setBackgroundColor(new DeviceRgb(230, 230, 230))
                                 .setBorder(Border.NO_BORDER)
                                 .setBorderBottom(new SolidBorder(ColorConstants.BLACK, 1))
                                 .add(new Paragraph(content).setFont(font).setFontSize(8))
-                                .setTextAlignment(TextAlignment.CENTER)
+                                .setTextAlignment(align)
                                 .setPadding(3);
         }
 

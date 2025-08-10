@@ -38,15 +38,39 @@ public class PdfController {
             @PathVariable Float caf) {
         try {
             byte[] pdfBytes = pdfService.generateDispatchGuidePdf(codEmp, tipoDoc, caf);
+            // Guardar/overwrite en disco
+            try {
+                String baseFileName = "guia_despacho_" + codEmp + "_" + tipoDoc + "_" + (int)caf.floatValue();
+                String fileName = baseFileName + ".pdf"; // nombre que puede cambiar si existe
+                java.nio.file.Path outDir = java.nio.file.Paths.get("generated-pdf");
+                java.nio.file.Files.createDirectories(outDir);
+                java.nio.file.Path outFile = outDir.resolve(fileName);
+                int counter = 1;
+                while (java.nio.file.Files.exists(outFile)) {
+                    fileName = baseFileName + " (" + counter + ").pdf";
+                    outFile = outDir.resolve(fileName);
+                    counter++;
+                }
+                java.nio.file.Files.write(outFile, pdfBytes, java.nio.file.StandardOpenOption.CREATE_NEW);
+                System.out.println("PDF guardado en: " + outFile.toAbsolutePath());
+                // Ajustar header con el nombre final versionado
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_PDF);
+                headers.setContentDispositionFormData("filename", fileName);
+                headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+                System.out.println("Nombre de descarga: " + fileName);
+                System.out.println("Generando PDF para CAF: " + caf);
+                return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+            } catch (Exception storeEx) {
+                System.err.println("Advertencia: no se pudo almacenar copia local del PDF: " + storeEx.getMessage());
+            }
+            // Si falló el almacenamiento, aún devolvemos el PDF con nombre base
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("filename",
-                    "guia_despacho_" + codEmp + "_" + tipoDoc + "_" + (int) caf.floatValue() + ".pdf");
+            String fallbackName = "guia_despacho_" + codEmp + "_" + tipoDoc + "_" + (int) caf.floatValue() + ".pdf";
+            headers.setContentDispositionFormData("filename", fallbackName);
             headers.setCacheControl("must-revalidate, post-check=0, pre-check=0");
-            
-            // Log del CAF para verificar
-            System.out.println("Generando PDF para CAF: " + caf);
-            
+            System.out.println("Generando PDF (sin copia local) para CAF: " + caf);
             return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
         } catch (RuntimeException e) {
             // Error si no se encuentran los datos
