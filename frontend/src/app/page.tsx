@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Download, FileText, Calendar, Building, User, Search, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { API_CONFIG, buildApiUrl } from '@/config/api'
 
 interface DispatchGuide {
   codEmp: string;
@@ -38,7 +39,7 @@ export default function DispatchGuidesPage() {
   const fetchGuides = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/pdf/dispatch-guides/all')
+      const response = await fetch(buildApiUrl(API_CONFIG.endpoints.dispatchGuides))
       if (!response.ok) {
         throw new Error('Error al cargar las guías')
       }
@@ -113,7 +114,7 @@ export default function DispatchGuidesPage() {
         // Opcional: mostrar un indicador de carga aquí
       }
       
-      const response = await fetch(guide.pdfUrl)
+      const response = await fetch(buildApiUrl(guide.pdfUrl))
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('PDF no encontrado. Verifique que la guía existe.')

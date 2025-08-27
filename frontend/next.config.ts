@@ -10,10 +10,11 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   async rewrites() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.7.26:8090'
     return [
       {
         source: '/api/:path*',
-        destination: `http://192.168.7.26:8090/:path*`,
+        destination: `${apiUrl}/api/:path*`,
       },
     ]
   }
