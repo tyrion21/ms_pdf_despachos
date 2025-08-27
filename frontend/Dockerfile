@@ -1,17 +1,17 @@
-# Dockerfile para Frontend Next.js
-
-# Etapa 1: Dependencias
-FROM node:18-alpine AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-
-# Etapa 2: Builder
+# Dockerfile simplificado para Frontend Next.js
 FROM node:18-alpine AS builder
 WORKDIR /app
+
+# Copiar archivos de package
 COPY package.json package-lock.json ./
+
+# Instalar TODAS las dependencias (incluyendo devDependencies)
 RUN npm install
+
+# Copiar código fuente
 COPY . .
+
+# Build de producción
 ENV NODE_ENV=production
 RUN npm run build
 
