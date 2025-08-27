@@ -4,13 +4,15 @@
 FROM node:18-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Etapa 2: Builder
 FROM node:18-alpine AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+RUN npm install
 COPY . .
+ENV NODE_ENV=production
 RUN npm run build
 
 # Etapa 3: Runner
