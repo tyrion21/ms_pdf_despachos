@@ -34,3 +34,9 @@ build/
 
 ### Ignora PDFs generados
 *.pdf
+
+### Archivos con credenciales sensibles
+src/main/resources/application.properties
+docker-compose*.yml
+*.env
+.env*
