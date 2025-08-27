@@ -36,7 +36,7 @@ services:
     image: nginx:alpine
     container_name: sdt-nginx
     ports:
-      - "80:80"
+      - "8091:80"
     volumes:
       - ./nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
     depends_on:
