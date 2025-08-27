@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+
 import { Input } from '@/components/ui/input'
 import { Download, FileText, Calendar, Building, User, Search, X } from 'lucide-react'
 import { format } from 'date-fns'
@@ -37,7 +38,7 @@ export default function DispatchGuidesPage() {
   const fetchGuides = async () => {
     try {
       setLoading(true)
-      const response = await fetch('http://localhost:8080/api/pdf/dispatch-guides/all')
+      const response = await fetch('/api/pdf/dispatch-guides/all')
       if (!response.ok) {
         throw new Error('Error al cargar las guías')
       }
@@ -112,7 +113,7 @@ export default function DispatchGuidesPage() {
         // Opcional: mostrar un indicador de carga aquí
       }
       
-      const response = await fetch(`http://localhost:8080${guide.pdfUrl}`)
+      const response = await fetch(guide.pdfUrl)
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('PDF no encontrado. Verifique que la guía existe.')
