@@ -1,7 +1,7 @@
 # Multi-stage build para optimizar el tamaño de la imagen final
 
 # Etapa 1: Build del backend (Spring Boot)
-FROM maven:3.9.4-openjdk-17 AS backend-builder
+FROM maven:3.9.6-eclipse-temurin-17 AS backend-builder
 WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
@@ -17,7 +17,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Etapa 3: Imagen final de producción
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # Instalar herramientas necesarias

@@ -86,20 +86,48 @@ log_warn "¿Quieres desplegar la aplicación ahora? (y/n)"
 read -r response
 if [[ $response =~ ^[Yy]$ ]]; then
     log_info "Desplegando aplicación..."
-    docker-compose build
-    docker-compose up -d
     
-    sleep 10
-    
-    if docker-compose ps | grep -q "Up"; then
-        echo ""
-        log_info "✅ ¡Despliegue exitoso!"
-        log_info "URLs disponibles:"
-        log_info "  Frontend:     http://$(hostname -I | awk '{print $1}'):3010"
-        log_info "  Backend API:  http://$(hostname -I | awk '{print $1}'):8090"
-        log_info "  App completa: http://$(hostname -I | awk '{print $1}'):80"
+    # Intentar con docker-compose normal primero
+    if docker-compose build && docker-compose up -d; then
+        sleep 10
+        if docker-compose ps | grep -q "Up"; then
+            echo ""
+            log_info "✅ ¡Despliegue exitoso!"
+            log_info "URLs disponibles:"
+            log_info "  Frontend:     http://$(hostname -I | awk '{print $1}'):3010"
+            log_info "  Backend API:  http://$(hostname -I | awk '{print $1}'):8090"
+            log_info "  App completa: http://$(hostname -I | awk '{print $1}'):80"
+        else
+            log_error "Error en servicios completos. Intentando versión simplificada..."
+            docker-compose down
+            log_info "Desplegando solo backend con docker-compose.simple.yml..."
+            docker-compose -f docker-compose.simple.yml build
+            docker-compose -f docker-compose.simple.yml up -d
+            
+            sleep 10
+            if docker-compose -f docker-compose.simple.yml ps | grep -q "Up"; then
+                log_info "✅ Backend desplegado exitosamente!"
+                log_info "URL Backend: http://$(hostname -I | awk '{print $1}'):8090"
+                log_warn "Frontend no desplegado. Puedes ejecutarlo manualmente con:"
+                log_warn "  cd frontend && npm install && npm run dev"
+            else
+                log_error "Error en el despliegue. Revisa los logs:"
+                docker-compose -f docker-compose.simple.yml logs
+            fi
+        fi
     else
-        log_error "Error en el despliegue. Revisa los logs:"
-        docker-compose logs
+        log_error "Error en la construcción. Intentando versión simplificada..."
+        log_info "Usando Dockerfile.simple..."
+        docker-compose -f docker-compose.simple.yml build
+        docker-compose -f docker-compose.simple.yml up -d
+        
+        sleep 10
+        if docker-compose -f docker-compose.simple.yml ps | grep -q "Up"; then
+            log_info "✅ Backend desplegado con versión simplificada!"
+            log_info "URL Backend: http://$(hostname -I | awk '{print $1}'):8090"
+        else
+            log_error "Error en el despliegue simplificado. Revisa los logs:"
+            docker-compose -f docker-compose.simple.yml logs
+        fi
     fi
 fi

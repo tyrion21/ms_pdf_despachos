@@ -1,0 +1,43 @@
+# Dockerfile simplificado para evitar problemas de imágenes base
+
+# Usar imagen base más estable
+FROM eclipse-temurin:17-jdk
+
+WORKDIR /app
+
+# Instalar herramientas necesarias
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear usuario no-root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copiar código fuente
+COPY . .
+
+# Construir la aplicación
+RUN mvn clean package -DskipTests
+
+# Crear directorios necesarios
+RUN mkdir -p /app/generated-pdf /app/logs
+RUN chown -R appuser:appuser /app
+
+# Cambiar a usuario no-root
+USER appuser
+
+# Configurar variables de entorno
+ENV JAVA_OPTS="-Xmx512m -Xms256m -XX:+UseG1GC"
+ENV SERVER_PORT=8090
+
+# Exponer puerto
+EXPOSE 8090
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8090/actuator/health || exit 1
+
+# Comando de inicio
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar target/*.jar"]
