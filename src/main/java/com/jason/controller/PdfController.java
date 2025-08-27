@@ -105,11 +105,14 @@ public class PdfController {
                     guia.getId().getCodTipodoc().equals(tipoDoc)) {
                     
                     Map<String, Object> guiaInfo = new HashMap<>();
+                    guiaInfo.put("codEmp", guia.getId().getCodEmp());
                     guiaInfo.put("caf", guia.getId().getCaf());
                     guiaInfo.put("rutCliente", guia.getRutCliente());
                     guiaInfo.put("razonSocial", guia.getRazonSocialCliente());
                     guiaInfo.put("fechaEmision", guia.getFechaEmision());
                     guiaInfo.put("total", guia.getTotal());
+                    guiaInfo.put("npdf", guia.getNpdf());
+                    guiaInfo.put("eenv", guia.getEenv());
                     guiaInfo.put("pdfUrl", "/api/pdf/dispatch-guide/" + codEmp + "/" + tipoDoc + "/" + guia.getId().getCaf());
                     
                     response.add(guiaInfo);
@@ -119,6 +122,64 @@ public class PdfController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             System.err.println("Error al listar guías: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    /**
+     * Endpoint para listar todas las guías disponibles (para el frontend)
+     * Filtra las guías con sys_origen = "FRUSYSFRPK-FP" o "FRUSYSFRPK-TI"
+     */
+    @GetMapping("/dispatch-guides/all")
+    public ResponseEntity<List<Map<String, Object>>> listAllDispatchGuides() {
+        try {
+            List<FeDteEnvWs> guias = repository.findAll();
+            List<Map<String, Object>> response = new ArrayList<>();
+            
+            // Log para debugging
+            System.out.println("=== DEBUGGING FILTROS ===");
+            System.out.println("Total guías encontradas: " + guias.size());
+            
+            int countFP = 0, countTI = 0, countOther = 0;
+            for (FeDteEnvWs guia : guias) {
+                String sysOrigen = guia.getSysOrigen();
+                if ("FRUSYSFRPK-FP".equals(sysOrigen)) {
+                    countFP++;
+                } else if ("FRUSYSFRPK-TI".equals(sysOrigen)) {
+                    countTI++;
+                } else {
+                    countOther++;
+                }
+                
+                // Filtrar guías con sys_origen válidos para ambos tipos
+                if ("FRUSYSFRPK-FP".equals(sysOrigen) || "FRUSYSFRPK-TI".equals(sysOrigen)) {
+                    Map<String, Object> guiaInfo = new HashMap<>();
+                    guiaInfo.put("codEmp", guia.getId().getCodEmp());
+                    guiaInfo.put("tipoDoc", guia.getId().getCodTipodoc());
+                    guiaInfo.put("caf", guia.getId().getCaf());
+                    guiaInfo.put("rutCliente", guia.getRutCliente());
+                    guiaInfo.put("razonSocial", guia.getRazonSocialCliente());
+                    guiaInfo.put("fechaEmision", guia.getFechaEmision());
+                    guiaInfo.put("total", guia.getTotal());
+                    guiaInfo.put("npdf", guia.getNpdf());
+                    guiaInfo.put("eenv", guia.getEenv());
+                    guiaInfo.put("sysOrigen", guia.getSysOrigen());
+                    guiaInfo.put("pdfUrl", "/api/pdf/dispatch-guide/" + guia.getId().getCodEmp() + "/" + guia.getId().getCodTipodoc() + "/" + guia.getId().getCaf());
+                    
+                    response.add(guiaInfo);
+                }
+            }
+            
+            System.out.println("Conteo por sys_origen:");
+            System.out.println("FRUSYSFRPK-FP: " + countFP);
+            System.out.println("FRUSYSFRPK-TI: " + countTI);
+            System.out.println("Otros: " + countOther);
+            System.out.println("Guías devueltas: " + response.size());
+            System.out.println("=== FIN DEBUGGING ===");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("Error al listar todas las guías: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
     }

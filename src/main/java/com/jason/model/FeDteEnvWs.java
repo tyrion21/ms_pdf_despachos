@@ -68,6 +68,16 @@ public class FeDteEnvWs {
     @Column(name = "sTIMB", columnDefinition = "NVARCHAR(4000)")
     private String sTimb;
 
+    @Column(name = "npdf", length = 50)
+    private String npdf;
+
+    @Column(name = "eenv")
+    private Boolean eenv;
+
+    
+    @Column(name = "sys_origen", length = 50)
+    private String sysOrigen;
+
     // Getters y Setters
     public FeDteEnvWsId getId() {
         return id;
@@ -227,5 +237,29 @@ public class FeDteEnvWs {
 
     public void setSTimb(String sTimb) {
         this.sTimb = sTimb;
+    }
+
+    public String getNpdf() {
+        return npdf;
+    }
+
+    public void setNpdf(String npdf) {
+        this.npdf = npdf;
+    }
+
+    public Boolean getEenv() {
+        return eenv;
+    }
+
+    public void setEenv(Boolean eenv) {
+        this.eenv = eenv;
+    }
+
+    public String getSysOrigen() {
+        return sysOrigen;
+    }
+
+    public void setSysOrigen(String sysOrigen) {
+        this.sysOrigen = sysOrigen;
     }
 }

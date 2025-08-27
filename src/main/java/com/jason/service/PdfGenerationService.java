@@ -75,9 +75,9 @@ public class PdfGenerationService {
                 String numFact = String.valueOf(caf != null ? caf.intValue() : 0);
                 java.util.List<DispatchDetailLine> detailLines = java.util.Collections.emptyList();
                 try {
-                        detailLines = detailRepository.fetchDetail(codEmp, numFact);
+                        detailLines = detailRepository.fetchDetail(codEmp, numFact, data.getSysOrigen());
                 } catch (Exception e) {
-                        System.err.println("Error obteniendo detalle SP_GUIA_DESPACHO_ELECTRONICA: " + e.getMessage());
+                        System.err.println("Error obteniendo detalle del SP: " + e.getMessage());
                 }
 
                 // Derivar datos adicionales desde primera línea del detalle (si existe)

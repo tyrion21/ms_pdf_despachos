@@ -197,10 +197,7 @@ BEGIN
             END) AS TIPO_TRASLADO,
             '1 NO ESPECIFICADO' AS TIPO_DESPACHO,
             
-            -- Información OEM si existe
-            MAX(OE.COD_CONSIG) AS COD_CONSIG,
-            MAX(R2.NOM_REC) AS NOMBRE_CONSIGNATARIO
-            
+            -- Información OEM si existe a
         FROM CTE_DESPACHOS_UNION D
         LEFT JOIN RECIBIDORES R ON D.COD_EMP = R.COD_EMP 
             AND D.COD_TEM = R.COD_TEM 
@@ -300,7 +297,8 @@ BEGIN
         
         -- Tipo de operación
         E.TIPO_DESPACHO,
-        E.TIPO_TRASLADO,
+        E.
+        ,
         
         -- Detalle de items
         D.NRO_LINEA,
@@ -349,6 +347,7 @@ BEGIN
     
 END
 GO
+
 
 -- =============================================
 -- EJEMPLOS DE USO DEL PROCEDIMIENTO:

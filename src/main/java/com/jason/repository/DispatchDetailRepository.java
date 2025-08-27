@@ -18,14 +18,60 @@ public class DispatchDetailRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<DispatchDetailLine> fetchDetail(String codEmp, String numFact) {
-        String sql = "EXEC SP_GUIA_DESPACHO_ELECTRONICA @COD_EMP = ?, @NUM_FACT = ?";
-        return jdbcTemplate.query(con -> {
+    public List<DispatchDetailLine> fetchDetail(String codEmp, String numFact, String sysOrigen) {
+        System.out.println("=== INICIANDO fetchDetail para " + codEmp + "/" + numFact + " ===");
+        
+        // Diagnóstico simple sin SP adicionales
+        System.out.println("Procesando guía " + codEmp + "/" + numFact + " con sys_origen: " + sysOrigen);
+        
+        // Normalizar sysOrigen: mayúsculas y quitar guiones para detección
+    String originNorm = sysOrigen != null ? sysOrigen.trim().toUpperCase() : "";
+    // Remover caracteres no alfanuméricos para determinar sufijo
+    String originClean = originNorm.replaceAll("[^A-Z0-9]", "");
+        String spName;
+        // Determinar SP basándose en sufijo FP (dispatch) o TI (translados)
+        if (originClean.endsWith("FP")) {
+            spName = "SP_GUIA_DESPACHO_ELECTRONICA";
+            System.out.println("Usando SP de despachos para sys_origen: " + originNorm);
+        } else if (originClean.endsWith("TI")) {
+            spName = "SP_GUIA_TRASLADOS_ELECTRONICA";
+            System.out.println("Usando SP de traslados para sys_origen: " + originNorm);
+        } else {
+            spName = "SP_GUIA_DESPACHO_ELECTRONICA"; // predeterminado
+            System.out.println("sys_origen desconocido ('" + sysOrigen + "'), usando SP_GUIA_DESPACHO_ELECTRONICA");
+        }
+        
+        System.out.println("Ejecutando " + spName + "...");
+        String sql = "EXEC " + spName + " @COD_EMP = ?, @NUM_FACT = ?";
+        List<DispatchDetailLine> result = jdbcTemplate.query(con -> {
             var ps = con.prepareStatement(sql);
             ps.setString(1, codEmp);
             ps.setString(2, numFact);
             return ps;
         }, new DispatchDetailRowMapper());
+        
+        System.out.println("SP returned " + result.size() + " records for " + codEmp + "/" + numFact);
+        if (result.isEmpty()) {
+            System.out.println("¡RESULTADO VACÍO! El SP no devolvió datos con " + spName + ".");
+            // Fallback: si era FP y no obtuvo detalle, intentar con despacho electrónica
+            if (originClean.endsWith("FP") && !"SP_GUIA_DESPACHO_ELECTRONICA".equals(spName)) {
+                System.out.println("Fallback: intentando SP_GUIA_DESPACHO_ELECTRONICA para sys_origen: " + originNorm);
+                result = jdbcTemplate.query(con -> {
+                    var ps2 = con.prepareStatement("EXEC SP_GUIA_DESPACHO_ELECTRONICA @COD_EMP = ?, @NUM_FACT = ?");
+                    ps2.setString(1, codEmp);
+                    ps2.setString(2, numFact);
+                    return ps2;
+                }, new DispatchDetailRowMapper());
+                System.out.println("Fallback SP_GUIA_DESPACHO_ELECTRONICA returned " + result.size() + " registros.");
+            }
+        } else {
+            for (int i = 0; i < Math.min(3, result.size()); i++) {
+                DispatchDetailLine line = result.get(i);
+                System.out.println("Línea " + (i+1) + ": " + line.getDescription() + " - Cantidad: " + line.getQuantity());
+            }
+        }
+        
+        return result;
     }
 
     private static class DispatchDetailRowMapper implements RowMapper<DispatchDetailLine> {
