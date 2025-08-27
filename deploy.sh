@@ -6,7 +6,7 @@
 set -e
 
 # Configuración
-REPO_URL="https://github.com/tu-usuario/sdt-pdf-generator.git"  # Cambiar por tu repositorio
+REPO_URL="https://github.com/tyrion21/ms_pdf_despachos.git"
 APP_NAME="sdt-pdf-generator"
 APP_DIR="/opt/$APP_NAME"
 
@@ -80,9 +80,43 @@ if [ ! -d "$APP_DIR" ]; then
     log_info "Clonando repositorio desde: $REPO_URL"
     git clone $REPO_URL $APP_DIR
 else
-    log_info "Directorio existe. Actualizando código..."
+    log_info "Directorio existe. Verificando repositorio..."
     cd $APP_DIR
-    git pull origin main
+    
+    # Verificar si es un repositorio git válido
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        log_info "Actualizando código existente..."
+        git pull origin main
+    else
+        log_warn "Directorio existe pero no es un repositorio git válido."
+        log_warn "¿Quieres eliminar el directorio y clonar de nuevo? (y/n)"
+        read -r response
+        if [[ $response =~ ^[Yy]$ ]]; then
+            # Backup de .env si existe
+            if [ -f ".env" ]; then
+                log_info "Guardando configuración existente..."
+                cp .env /tmp/sdt-pdf-generator.env.backup
+            fi
+            
+            cd ..
+            sudo rm -rf $APP_DIR
+            sudo mkdir -p $APP_DIR
+            sudo chown $USER:$USER $APP_DIR
+            
+            log_info "Clonando repositorio desde: $REPO_URL"
+            git clone $REPO_URL $APP_DIR
+            cd $APP_DIR
+            
+            # Restaurar .env si existía
+            if [ -f "/tmp/sdt-pdf-generator.env.backup" ]; then
+                log_info "Restaurando configuración anterior..."
+                cp /tmp/sdt-pdf-generator.env.backup .env
+            fi
+        else
+            log_error "No se puede continuar sin un repositorio git válido."
+            exit 1
+        fi
+    fi
 fi
 
 # Ir al directorio de la aplicación
