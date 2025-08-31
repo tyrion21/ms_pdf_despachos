@@ -140,19 +140,21 @@ public class PdfController {
             System.out.println("=== DEBUGGING FILTROS ===");
             System.out.println("Total guías encontradas: " + guias.size());
             
-            int countFP = 0, countTI = 0, countOther = 0;
+            int countFP = 0, countTI = 0, countCC = 0, countOther = 0;
             for (FeDteEnvWs guia : guias) {
                 String sysOrigen = guia.getSysOrigen();
                 if ("FRUSYSFRPK-FP".equals(sysOrigen)) {
                     countFP++;
                 } else if ("FRUSYSFRPK-TI".equals(sysOrigen)) {
                     countTI++;
+                } else if ("FRUSYSFRPK-CC".equals(sysOrigen)) {
+                    countCC++;
                 } else {
                     countOther++;
                 }
                 
-                // Filtrar guías con sys_origen válidos para ambos tipos
-                if ("FRUSYSFRPK-FP".equals(sysOrigen) || "FRUSYSFRPK-TI".equals(sysOrigen)) {
+                // Filtrar guías con sys_origen válidos para los tres tipos
+                if ("FRUSYSFRPK-FP".equals(sysOrigen) || "FRUSYSFRPK-TI".equals(sysOrigen) || "FRUSYSFRPK-CC".equals(sysOrigen)) {
                     Map<String, Object> guiaInfo = new HashMap<>();
                     guiaInfo.put("codEmp", guia.getId().getCodEmp());
                     guiaInfo.put("tipoDoc", guia.getId().getCodTipodoc());
@@ -173,6 +175,7 @@ public class PdfController {
             System.out.println("Conteo por sys_origen:");
             System.out.println("FRUSYSFRPK-FP: " + countFP);
             System.out.println("FRUSYSFRPK-TI: " + countTI);
+            System.out.println("FRUSYSFRPK-CC: " + countCC);
             System.out.println("Otros: " + countOther);
             System.out.println("Guías devueltas: " + response.size());
             System.out.println("=== FIN DEBUGGING ===");

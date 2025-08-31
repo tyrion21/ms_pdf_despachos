@@ -43,23 +43,18 @@ export default function DispatchGuidesPage() {
       if (!response.ok) {
         throw new Error('Error al cargar las guías')
       }
+      
       const data = await response.json()
       
-      // El backend ya filtra por sys_origen = "FRUSYSFRPK-FP" y "FRUSYSFRPK-TI"
-      // Ordenar por fecha de emisión (más reciente primero) y luego por CAF (descendente)
+      // El backend ya filtra por sys_origen = "FRUSYSFRPK-FP", "FRUSYSFRPK-TI" y "FRUSYSFRPK-CC"
+      // Ordenar por CAF de mayor a menor (más reciente primero)
       const sortedData = data.sort((a: DispatchGuide, b: DispatchGuide) => {
-        const dateA = new Date(a.fechaEmision).getTime()
-        const dateB = new Date(b.fechaEmision).getTime()
-        
-        if (dateA !== dateB) {
-          return dateB - dateA // Más reciente primero
-        }
-        
-        return b.caf - a.caf // CAF más alto primero si la fecha es igual
+        return b.caf - a.caf // CAF más alto primero
       })
       
-      // Tomar solo las últimas 100 guías
+      // Tomar las primeras 100 guías ordenadas por CAF
       const limitedData = sortedData.slice(0, 100)
+      
       setGuides(limitedData)
       setFilteredGuides(limitedData)
     } catch (err) {
@@ -213,8 +208,8 @@ export default function DispatchGuidesPage() {
             <FileText className="h-6 w-6" />
             Guías de Despacho y Traslados Electrónicos
           </CardTitle>
-          <p className="text-muted-foreground">
-            Mostrando {filteredGuides.length} de {guides.length} guías de despacho (FP) y traslados (TI) - máximo 100
+                    <p className="text-muted-foreground">
+            Mostrando {filteredGuides.length} de 100 guías de despacho (FP), traslados (TI), envases (CC)
           </p>
         </CardHeader>
         <CardContent>
@@ -313,10 +308,22 @@ export default function DispatchGuidesPage() {
                       </TableCell>
                       <TableCell className="font-mono text-xs">
                         <Badge 
-                          variant={guide.sysOrigen === 'FRUSYSFRPK-FP' ? 'default' : 'outline'} 
-                          className="text-xs"
+                          variant={
+                            guide.sysOrigen === 'FRUSYSFRPK-FP' ? 'default' : 
+                            guide.sysOrigen === 'FRUSYSFRPK-TI' ? 'outline' : 
+                            guide.sysOrigen === 'FRUSYSFRPK-CC' ? 'secondary' :
+                            'secondary'
+                          } 
+                          className={`text-xs ${
+                            guide.sysOrigen === 'FRUSYSFRPK-CC' ? 'bg-green-100 text-green-800 border-green-200' : ''
+                          }`}
                         >
-                          {guide.sysOrigen === 'FRUSYSFRPK-FP' ? 'Despacho' : 'Traslado'}
+                          {
+                            guide.sysOrigen === 'FRUSYSFRPK-FP' ? 'Despacho' : 
+                            guide.sysOrigen === 'FRUSYSFRPK-TI' ? 'Traslado' : 
+                            guide.sysOrigen === 'FRUSYSFRPK-CC' ? 'Envases' :
+                            'Desconocido'
+                          }
                         </Badge>
                       </TableCell>
                       <TableCell>

@@ -29,13 +29,16 @@ public class DispatchDetailRepository {
     // Remover caracteres no alfanuméricos para determinar sufijo
     String originClean = originNorm.replaceAll("[^A-Z0-9]", "");
         String spName;
-        // Determinar SP basándose en sufijo FP (dispatch) o TI (translados)
+        // Determinar SP basándose en sufijo FP (dispatch) o TI (translados) o CC (envases)
         if (originClean.endsWith("FP")) {
             spName = "SP_GUIA_DESPACHO_ELECTRONICA";
             System.out.println("Usando SP de despachos para sys_origen: " + originNorm);
         } else if (originClean.endsWith("TI")) {
             spName = "SP_GUIA_TRASLADOS_ELECTRONICA";
             System.out.println("Usando SP de traslados para sys_origen: " + originNorm);
+        } else if (originClean.endsWith("CC")) {
+            spName = "SP_GUIA_DESPACHO_CC_ENVASES";
+            System.out.println("Usando SP de envases para sys_origen: " + originNorm);
         } else {
             spName = "SP_GUIA_DESPACHO_ELECTRONICA"; // predeterminado
             System.out.println("sys_origen desconocido ('" + sysOrigen + "'), usando SP_GUIA_DESPACHO_ELECTRONICA");
@@ -53,8 +56,8 @@ public class DispatchDetailRepository {
         System.out.println("SP returned " + result.size() + " records for " + codEmp + "/" + numFact);
         if (result.isEmpty()) {
             System.out.println("¡RESULTADO VACÍO! El SP no devolvió datos con " + spName + ".");
-            // Fallback: si era FP y no obtuvo detalle, intentar con despacho electrónica
-            if (originClean.endsWith("FP") && !"SP_GUIA_DESPACHO_ELECTRONICA".equals(spName)) {
+            // Fallback: si era FP o CC y no obtuvo detalle, intentar con despacho electrónica
+            if ((originClean.endsWith("FP") || originClean.endsWith("CC")) && !"SP_GUIA_DESPACHO_ELECTRONICA".equals(spName)) {
                 System.out.println("Fallback: intentando SP_GUIA_DESPACHO_ELECTRONICA para sys_origen: " + originNorm);
                 result = jdbcTemplate.query(con -> {
                     var ps2 = con.prepareStatement("EXEC SP_GUIA_DESPACHO_ELECTRONICA @COD_EMP = ?, @NUM_FACT = ?");

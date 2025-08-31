@@ -1,16 +1,17 @@
 // Configuración de API
 export const API_CONFIG = {
   // URL base del API - puede ser sobrescrita por variable de entorno
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://192.168.7.26:8090',
-  
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://192.168.7.26:8090",
+  // baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
+
   // Endpoints específicos
   endpoints: {
-    dispatchGuides: '/api/pdf/dispatch-guides/all',
-    generatePdf: (codEmp: string, tipoDoc: number, caf: number) => 
+    dispatchGuides: "/api/pdf/dispatch-guides/all",
+    generatePdf: (codEmp: string, tipoDoc: number, caf: number) =>
       `/api/pdf/dispatch-guide/${codEmp}/${tipoDoc}/${caf}`,
-    health: '/actuator/health'
-  }
-}
+    health: "/actuator/health",
+  },
+};
 
 // Función helper para construir URLs completas
 export const buildApiUrl = (endpoint: string): string => {
@@ -19,12 +20,7 @@ export const buildApiUrl = (endpoint: string): string => {
     return endpoint
   }
   
-  // Si estamos en el cliente y usamos proxy, usar ruta relativa
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    return endpoint
-  }
-  
-  // En servidor o producción, usar URL completa
+  // Siempre usar URL completa para evitar problemas de proxy
   return `${API_CONFIG.baseURL}${endpoint}`
 }
 
